@@ -2,18 +2,16 @@ package com.example.hands
 
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
-import android.media.Image
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -27,6 +25,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var tv_result: TextView
     private lateinit var btn_select: Button
+    private lateinit var btn_capture: Button
+    private lateinit var iv_preview: ImageView
 
     val baseOptionsBuilder = BaseOptions.builder().setModelAssetPath("gesture_recognizer.task")
     val baseOptions = baseOptionsBuilder.build()
@@ -44,45 +44,12 @@ class MainActivity : AppCompatActivity() {
 
     private val getContent =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            lifecycleScope.launch {
-                withContext(Dispatchers.IO) {
-                    uri?.let { mediaUri ->
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            val source = ImageDecoder.createSource(
-                                contentResolver, mediaUri
-                            )
-                            ImageDecoder.decodeBitmap(source)
-                        } else {
-                            MediaStore.Images.Media.getBitmap(
-                                contentResolver, mediaUri
-                            )
-                        }.copy(Bitmap.Config.ARGB_8888, true)?.let { bitmap ->
-                            val mpImage = BitmapImageBuilder(bitmap).build()
+            uri?.let { analyzeImageUri(it) }
+        }
 
-                            val result = gestureRecognizer?.recognize(mpImage)
-
-                            if (result != null) {
-                                withContext(Dispatchers.Main) {
-                                    if (result.gestures().isNotEmpty()) {
-                                        if (result.gestures()[0].isNotEmpty()) {
-                                            tv_result.text = result.gestures()[0][0].categoryName()
-                                        }
-                                    }
-
-                                    if (result.handednesses().isNotEmpty()) {
-                                        if (result.handednesses()[0].isNotEmpty()) {
-                                            tv_result.append(result.handednesses()[0][0].displayName())
-                                        }
-                                    }
-
-                                }
-                            }
-
-                        }
-
-                    }
-                }
-            }
+    private val takePicture =
+        registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
+            bitmap?.let { analyzeBitmap(it) }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -92,12 +59,51 @@ class MainActivity : AppCompatActivity() {
 
         tv_result = findViewById(R.id.tv_result)
         btn_select = findViewById(R.id.btn_select)
+        btn_capture = findViewById(R.id.btn_capture)
+        iv_preview = findViewById(R.id.iv_preview)
 
         gestureRecognizer = GestureRecognizer.createFromOptions(this, options)
 
-        btn_select.setOnClickListener{
+        btn_select.setOnClickListener {
             getContent.launch(arrayOf("image/*"))
         }
 
+        btn_capture.setOnClickListener {
+            takePicture.launch(null)
+        }
+    }
+
+    private fun analyzeImageUri(uri: Uri) {
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    val source = ImageDecoder.createSource(contentResolver, uri)
+                    ImageDecoder.decodeBitmap(source)
+                } else {
+                    MediaStore.Images.Media.getBitmap(contentResolver, uri)
+                }.copy(Bitmap.Config.ARGB_8888, true)
+            }
+            analyzeBitmap(bitmap)
+        }
+    }
+
+    private fun analyzeBitmap(bitmap: Bitmap) {
+        lifecycleScope.launch(Dispatchers.Main) {
+            iv_preview.setImageBitmap(bitmap)
+            withContext(Dispatchers.IO) {
+                val mpImage = BitmapImageBuilder(bitmap).build()
+                val result = gestureRecognizer?.recognize(mpImage)
+                withContext(Dispatchers.Main) {
+                    result?.let {
+                        if (it.gestures().isNotEmpty() && it.gestures()[0].isNotEmpty()) {
+                            tv_result.text = it.gestures()[0][0].categoryName()
+                        }
+                        if (it.handednesses().isNotEmpty() && it.handednesses()[0].isNotEmpty()) {
+                            tv_result.append(" " + it.handednesses()[0][0].displayName())
+                        }
+                    }
+                }
+            }
+        }
     }
 }
