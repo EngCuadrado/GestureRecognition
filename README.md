@@ -24,3 +24,7 @@ This Android application utilizes Google's Mediapipe library to recognize gestur
 ## Documentation
 - Google Mediapipe : https://ai.google.dev/edge/mediapipe/solutions/guide
 - Gesture Recognition : https://ai.google.dev/edge/mediapipe/solutions/vision/gesture_recognizer
+
+## Credits
+
+This project was inspired by and based on the tutorial by Coding With Nobody - https://youtu.be/kOvXPG9bnn0?si=iAtRPEInwXWjmx3V
