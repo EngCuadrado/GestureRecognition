@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,11 +28,13 @@ import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var tv_result: TextView
-    private lateinit var btn_select: Button
-    private lateinit var btn_capture: Button
-    private lateinit var iv_preview: ImageView
+    // Declaración de vistas y variables necesarias
+    private lateinit var tv_result: TextView  // TextView para mostrar el resultado del reconocimiento de gestos
+    private lateinit var btn_select: Button   // Botón para seleccionar una imagen desde el almacenamiento
+    private lateinit var btn_capture: Button  // Botón para capturar una imagen desde la cámara
+    private lateinit var iv_preview: ImageView  // ImageView para mostrar la imagen seleccionada o capturada
 
+    // Configuración para el reconocimiento de gestos usando Mediapipe
     val baseOptionsBuilder = BaseOptions.builder().setModelAssetPath("gesture_recognizer.task")
     val baseOptions = baseOptionsBuilder.build()
 
@@ -44,58 +47,77 @@ class MainActivity : AppCompatActivity() {
             .setRunningMode(RunningMode.IMAGE)
 
     val options = optionsBuilder.build()
-    var gestureRecognizer: GestureRecognizer? = null
+    var gestureRecognizer: GestureRecognizer? =
+        null  // Objeto GestureRecognizer para reconocimiento de gestos
 
+    // Lanzadores para obtener contenido de documentos y capturar imágenes
     private val getContent =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-            uri?.let { analyzeImageUri(it) }
+            uri?.let { analyzeImageUri(it) }  // Cuando se obtiene un URI de imagen, analizar la imagen
         }
 
     private val takePicture =
         registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
-            bitmap?.let { analyzeBitmap(it) }
+            bitmap?.let { analyzeBitmap(it) }  // Cuando se captura una imagen, analizar el Bitmap
         }
 
-
+    // Lanzador para solicitar permisos
     lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContentView(R.layout.activity_main)
+        enableEdgeToEdge()  // Habilitar el modo de borde a borde (edge-to-edge)
 
+        setContentView(R.layout.activity_main)  // Establecer el layout de la actividad
+
+        // Inicialización de las vistas desde el layout
         tv_result = findViewById(R.id.tv_result)
         btn_select = findViewById(R.id.btn_select)
         btn_capture = findViewById(R.id.btn_capture)
         iv_preview = findViewById(R.id.iv_preview)
 
+        // Registro del lanzador para solicitar permisos de cámara
         requestPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
-        ) {}
+        ) { isGranted: Boolean ->
+            if (isGranted) {
+                // Si se concede el permiso, lanzar la captura de imagen
+                takePicture.launch(null)
+            } else {
+                // Manejar aquí el escenario donde se deniega el permiso de cámara
+                Toast.makeText(this, "Permiso de cámara denegado", Toast.LENGTH_SHORT).show()
+            }
+        }
 
+        // Creación del objeto GestureRecognizer utilizando las opciones configuradas
         gestureRecognizer = GestureRecognizer.createFromOptions(this, options)
 
+        // Configuración de listeners para los botones de seleccionar y capturar imagen
         btn_select.setOnClickListener {
+            // Al hacer clic en el botón de seleccionar, lanzar la actividad para seleccionar una imagen
             getContent.launch(arrayOf("image/*"))
         }
 
         btn_capture.setOnClickListener {
+            // Al hacer clic en el botón de capturar, validar y solicitar permiso de cámara
             validateCameraPermission()
         }
     }
 
+    // Función para validar y solicitar permiso de cámara
     private fun validateCameraPermission() {
         try {
+            // Verificar si el permiso de cámara ya está concedido
             val cameraPermissionStatus = ActivityCompat.checkSelfPermission(
                 this,
                 Manifest.permission.CAMERA
             ) == PackageManager.PERMISSION_GRANTED
 
-            // Check permission before launching intent
+            // Si el permiso de cámara está concedido, lanzar la captura de imagen
             if (cameraPermissionStatus) {
                 takePicture.launch(null)
             } else {
+                // Si el permiso de cámara no está concedido, solicitarlo al usuario
                 requestPermissionLauncher.launch(Manifest.permission.CAMERA)
             }
         } catch (e: Exception) {
@@ -103,28 +125,39 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // Función para analizar una imagen desde un URI obtenido al seleccionar una imagen
     private fun analyzeImageUri(uri: Uri) {
         lifecycleScope.launch {
+            // Cargar y decodificar la imagen desde el URI en un hilo de fondo (Dispatchers.IO)
             val bitmap = withContext(Dispatchers.IO) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     val source = ImageDecoder.createSource(contentResolver, uri)
                     ImageDecoder.decodeBitmap(source)
                 } else {
                     MediaStore.Images.Media.getBitmap(contentResolver, uri)
-                }.copy(Bitmap.Config.ARGB_8888, true)
+                }.copy(
+                    Bitmap.Config.ARGB_8888,
+                    true
+                )  // Copiar el bitmap para asegurar la mutabilidad
             }
-            analyzeBitmap(bitmap)
+            analyzeBitmap(bitmap)  // Llamar a la función para analizar el Bitmap obtenido
         }
     }
 
+    // Función para analizar un Bitmap capturado desde la cámara
     private fun analyzeBitmap(bitmap: Bitmap) {
         lifecycleScope.launch(Dispatchers.Main) {
+            // Mostrar el Bitmap capturado en el ImageView en el hilo principal
             iv_preview.setImageBitmap(bitmap)
+
+            // Analizar el Bitmap utilizando Mediapipe en un hilo de fondo (Dispatchers.IO)
             withContext(Dispatchers.IO) {
                 val mpImage = BitmapImageBuilder(bitmap).build()
-                val result = gestureRecognizer?.recognize(mpImage)
+                val result =
+                    gestureRecognizer?.recognize(mpImage)  // Realizar el reconocimiento de gestos
                 withContext(Dispatchers.Main) {
                     result?.let {
+                        // Procesar el resultado del reconocimiento de gestos
                         if (it.gestures().isNotEmpty() && it.gestures()[0].isNotEmpty()) {
                             tv_result.text = it.gestures()[0][0].categoryName()
                         }
