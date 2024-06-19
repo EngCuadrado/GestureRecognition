@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.speech.tts.TextToSpeech
+import android.util.Log
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
@@ -25,8 +27,9 @@ import com.google.mediapipe.tasks.vision.gesturerecognizer.GestureRecognizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     // Declaración de vistas y variables necesarias
     private lateinit var tv_result: TextView  // TextView para mostrar el resultado del reconocimiento de gestos
@@ -64,6 +67,8 @@ class MainActivity : AppCompatActivity() {
     // Lanzador para solicitar permisos
     lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
 
+    private lateinit var tts: TextToSpeech  // Instancia de TextToSpeech
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()  // Habilitar el modo de borde a borde (edge-to-edge)
@@ -88,6 +93,9 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Permiso de cámara denegado", Toast.LENGTH_SHORT).show()
             }
         }
+
+        // Inicialización de TextToSpeech
+        tts = TextToSpeech(this, this)
 
         // Creación del objeto GestureRecognizer utilizando las opciones configuradas
         gestureRecognizer = GestureRecognizer.createFromOptions(this, options)
@@ -159,7 +167,10 @@ class MainActivity : AppCompatActivity() {
                     result?.let {
                         // Procesar el resultado del reconocimiento de gestos
                         if (it.gestures().isNotEmpty() && it.gestures()[0].isNotEmpty()) {
-                            tv_result.text = it.gestures()[0][0].categoryName()
+                            var gestureName = it.gestures()[0][0].categoryName()
+                            gestureName = gestureName.replace('_', ' ')
+                            tv_result.text = gestureName
+                            speakOut(gestureName)
                         }
                         if (it.handednesses().isNotEmpty() && it.handednesses()[0].isNotEmpty()) {
                             tv_result.append(" " + it.handednesses()[0][0].displayName())
@@ -167,6 +178,31 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+
+    // Función para reproducir el texto en tv_result utilizando TTS
+    private fun speakOut(text: String) {
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "")
+    }
+
+    override fun onDestroy() {
+        // Liberar recursos de TextToSpeech cuando se destruya la actividad
+        tts.stop()
+        tts.shutdown()
+        super.onDestroy()
+    }
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            // Configurar idioma (opcional)
+            val result = tts.setLanguage(Locale.US)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.e("TTS", "Language is not supported")
+            }
+        } else {
+            Log.e("TTS", "Initialization failed")
         }
     }
 }
