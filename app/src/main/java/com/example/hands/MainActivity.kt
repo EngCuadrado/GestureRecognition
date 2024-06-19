@@ -1,5 +1,7 @@
 package com.example.hands
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
@@ -10,8 +12,10 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
@@ -52,6 +56,10 @@ class MainActivity : AppCompatActivity() {
             bitmap?.let { analyzeBitmap(it) }
         }
 
+
+    lateinit var requestPermissionLauncher: ActivityResultLauncher<String>
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -62,6 +70,10 @@ class MainActivity : AppCompatActivity() {
         btn_capture = findViewById(R.id.btn_capture)
         iv_preview = findViewById(R.id.iv_preview)
 
+        requestPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) {}
+
         gestureRecognizer = GestureRecognizer.createFromOptions(this, options)
 
         btn_select.setOnClickListener {
@@ -69,7 +81,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         btn_capture.setOnClickListener {
-            takePicture.launch(null)
+            validateCameraPermission()
+        }
+    }
+
+    private fun validateCameraPermission() {
+        try {
+            val cameraPermissionStatus = ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+
+            // Check permission before launching intent
+            if (cameraPermissionStatus) {
+                takePicture.launch(null)
+            } else {
+                requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
